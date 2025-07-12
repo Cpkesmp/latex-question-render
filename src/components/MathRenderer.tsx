@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface MathRendererProps {
   children: React.ReactNode;
@@ -12,52 +12,60 @@ declare global {
 }
 
 export const MathJaxProvider: React.FC<MathRendererProps> = ({ children }) => {
-  const initialized = useRef(false);
+  const [mathJaxLoaded, setMathJaxLoaded] = useState(false);
 
   useEffect(() => {
-    if (initialized.current) return;
-    
+    // Check if MathJax is already loaded
+    if (window.MathJax) {
+      setMathJaxLoaded(true);
+      return;
+    }
+
+    // Configure MathJax before loading the script
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true,
+        processEnvironments: true,
+        packages: ['base', 'ams', 'newcommand', 'configmacros']
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+        ignoreHtmlClass: 'tex2jax_ignore',
+        processHtmlClass: 'tex2jax_process'
+      },
+      startup: {
+        typeset: false,
+        ready: () => {
+          window.MathJax.startup.defaultReady();
+          setMathJaxLoaded(true);
+        }
+      }
+    };
+
     // Load MathJax script
     const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/MathJax.js?config=TeX-MML-AM_CHTML';
+    script.src = 'https://polyfill.io/v3/polyfill.min.js?features=es6';
     script.async = true;
-    
-    script.onload = () => {
-      window.MathJax.Hub.Config({
-        tex2jax: {
-          inlineMath: [['$', '$'], ['\\(', '\\)']],
-          displayMath: [['$$', '$$'], ['\\[', '\\]']],
-          processEscapes: true,
-          processEnvironments: true,
-          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-        },
-        TeX: {
-          extensions: ['AMSmath.js', 'AMSsymbols.js', 'autoload-all.js'],
-          equationNumbers: { autoNumber: 'AMS' },
-        },
-        showProcessingMessages: false,
-        messageStyle: 'none',
-        displayAlign: 'left',
-        displayIndent: '0em',
-        showMathMenu: false,
-      });
-      
-      window.MathJax.Hub.Startup.onload();
-    };
-    
     document.head.appendChild(script);
-    initialized.current = true;
+
+    const mathJaxScript = document.createElement('script');
+    mathJaxScript.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+    mathJaxScript.async = true;
+    mathJaxScript.id = 'MathJax-script';
+    document.head.appendChild(mathJaxScript);
 
     return () => {
-      // Cleanup script if component unmounts
-      const existingScript = document.querySelector(`script[src="${script.src}"]`);
-      if (existingScript) {
-        document.head.removeChild(existingScript);
-      }
+      // Cleanup on unmount
+      const polyfillScript = document.querySelector('script[src*="polyfill.io"]');
+      const mathjaxScript = document.getElementById('MathJax-script');
+      if (polyfillScript) document.head.removeChild(polyfillScript);
+      if (mathjaxScript) document.head.removeChild(mathjaxScript);
     };
   }, []);
 
-  return <div>{children}</div>;
+  return <div className={mathJaxLoaded ? 'mathjax-loaded' : 'mathjax-loading'}>{children}</div>;
 };
 
 interface MathTextProps {
@@ -67,26 +75,46 @@ interface MathTextProps {
 
 export const MathText: React.FC<MathTextProps> = ({ text, className = "" }) => {
   const mathRef = useRef<HTMLDivElement>(null);
-
-  // Process the text to handle LaTeX newlines and formatting
-  const processedText = text
-    .replace(/\$\\\\\$/g, '<br/>')
-    .replace(/\$\\newline\$/g, '<br/>')
-    .replace(/\\newline/g, '<br/>')
-    .replace(/\\\\/g, '<br/>');
+  const [processedText, setProcessedText] = useState('');
 
   useEffect(() => {
-    if (mathRef.current && window.MathJax && window.MathJax.Hub) {
-      // Queue the typesetting for this specific element
-      window.MathJax.Hub.Queue(['Typeset', window.MathJax.Hub, mathRef.current]);
+    // Process the text to handle LaTeX newlines and formatting
+    let processed = text
+      .replace(/\$\\\\\$/g, '<br/>')
+      .replace(/\$\\newline\$/g, '<br/>')
+      .replace(/\\newline/g, '<br/>')
+      .replace(/\\\\/g, '\\\\') // Keep double backslashes for LaTeX
+      .replace(/\n/g, '<br/>'); // Handle actual newlines
+
+    setProcessedText(processed);
+  }, [text]);
+
+  useEffect(() => {
+    if (mathRef.current && window.MathJax && processedText) {
+      // Clear the element first
+      mathRef.current.innerHTML = processedText;
+      
+      // Typeset the math
+      if (window.MathJax.typesetPromise) {
+        window.MathJax.typesetPromise([mathRef.current]).catch((err: any) => {
+          console.warn('MathJax typeset error:', err);
+        });
+      } else if (window.MathJax.Hub) {
+        // Fallback for MathJax v2
+        window.MathJax.Hub.Queue(['Typeset', window.MathJax.Hub, mathRef.current]);
+      }
     }
   }, [processedText]);
 
   return (
     <div 
       ref={mathRef}
-      className={className}
-      dangerouslySetInnerHTML={{ __html: processedText }}
-    />
+      className={`${className} tex2jax_process`}
+      style={{ lineHeight: '1.6' }}
+    >
+      {!window.MathJax && (
+        <div dangerouslySetInnerHTML={{ __html: processedText }} />
+      )}
+    </div>
   );
 };
