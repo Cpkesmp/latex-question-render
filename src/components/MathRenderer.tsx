@@ -28,7 +28,11 @@ export const MathJaxProvider: React.FC<MathRendererProps> = ({ children }) => {
         displayMath: [['$$', '$$'], ['\\[', '\\]']],
         processEscapes: true,
         processEnvironments: true,
-        packages: ['base', 'ams', 'newcommand', 'configmacros']
+        packages: ['base', 'ams', 'newcommand', 'configmacros', 'array', 'amsmath', 'amssymb'],
+        macros: {
+          textnormal: ['\\text{#1}', 1],
+          newline: '\\\\',
+        }
       },
       options: {
         skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
@@ -80,24 +84,34 @@ export const MathText: React.FC<MathTextProps> = ({ text, className = "" }) => {
   useEffect(() => {
     // Process the text to handle LaTeX newlines and formatting
     let processed = text
-      .replace(/\$\\\\\$/g, '<br/>')
-      .replace(/\$\\newline\$/g, '<br/>')
-      .replace(/\\newline/g, '<br/>')
-      .replace(/\\\\/g, '\\\\') // Keep double backslashes for LaTeX
-      .replace(/\n/g, '<br/>'); // Handle actual newlines
-
+      // Handle newlines first
+      .replace(/\$\\newline\$/g, '\\\\')
+      .replace(/\\newline/g, '\\\\')
+      .replace(/\$\\\\\$/g, '\\\\')
+      // Wrap entire content in math mode if it contains LaTeX
+      .trim();
+    
+    // If the text contains array or other display math environments, wrap in display math
+    if (processed.includes('\\begin{array}') || processed.includes('\\textnormal')) {
+      processed = `$$${processed}$$`;
+    }
+    
     setProcessedText(processed);
   }, [text]);
 
   useEffect(() => {
     if (mathRef.current && window.MathJax && processedText) {
-      // Clear the element first
-      mathRef.current.innerHTML = processedText;
+      // Set the content
+      mathRef.current.textContent = processedText;
       
       // Typeset the math
       if (window.MathJax.typesetPromise) {
         window.MathJax.typesetPromise([mathRef.current]).catch((err: any) => {
           console.warn('MathJax typeset error:', err);
+          // Fallback: show raw content if typesetting fails
+          if (mathRef.current) {
+            mathRef.current.innerHTML = processedText.replace(/\\\\/g, '<br/>');
+          }
         });
       } else if (window.MathJax.Hub) {
         // Fallback for MathJax v2
