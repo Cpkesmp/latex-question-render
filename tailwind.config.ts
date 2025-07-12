@@ -52,6 +52,16 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				math: {
+					bg: 'hsl(var(--math-bg))',
+					border: 'hsl(var(--math-border))'
+				},
+				section: {
+					bg: 'hsl(var(--section-bg))'
+				},
+				question: {
+					bg: 'hsl(var(--question-bg))'
+				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
